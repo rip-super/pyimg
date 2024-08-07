@@ -97,7 +97,7 @@ def image_to_rgb(image_path):
 
 def main():
     if len(sys.argv) != 3:
-        print("Usage: pyimg.exe <encode/fwrite/view> <path_to_file>")
+        print("Usage: pyimg.py <encode/fwrite/view> <path_to_file>")
         sys.exit(1)
     
     command = sys.argv[1].lower()
@@ -108,7 +108,7 @@ def main():
         sys.exit(1)
 
     if command not in {"encode", "view", "fwrite"}:
-        print("Usage: pyimg.exe <encode/fwrite/view> <path_to_file>")
+        print("Usage: pyimg.py <encode/fwrite/view> <path_to_file>")
         sys.exit(1)
     
     if command in {"view", "fwrite"}:
