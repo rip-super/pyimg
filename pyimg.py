@@ -31,6 +31,16 @@ def stopLoading():
     sys.stdout.write("\b \n")
     sys.stdout.flush()
 
+def image_to_rgb(image_path):
+    """Extract RGB values from an image."""
+    with Image.open(image_path) as img:
+        img = img.convert('RGB')
+        width, height = img.size
+
+        rgb_values = [img.getpixel((x, y)) for y in range(height) for x in range(width)]
+
+    return rgb_values, width, height
+
 def read_rgb_values(file_path):
     """Read RGB values and dimensions from a compressed binary file."""
     with open(file_path, "rb") as f:
@@ -40,9 +50,13 @@ def read_rgb_values(file_path):
         header = rgb_data[:8]
         width, height = struct.unpack('II', header)
         
-        rgb_array = np.frombuffer(rgb_data[8:], dtype=np.uint8).reshape((height, width, 3))
+        filtered_rgb_data = rgb_data[8:]
+        unfiltered_rgb_data = undo_sub_filter(filtered_rgb_data, width, height)
+        
+        rgb_array = np.frombuffer(unfiltered_rgb_data, dtype=np.uint8).reshape((height, width, 3))
 
     return rgb_array, width, height
+
 
 def create_image(rgb_array):
     """Create an image from RGB array."""
@@ -85,19 +99,30 @@ def display_image(image_bytes, file_name):
     
     root.mainloop()
 
-def image_to_rgb(image_path):
-    """Extract RGB values from an image."""
-    with Image.open(image_path) as img:
-        img = img.convert('RGB')
-        width, height = img.size
+def sub_filter(data, width, height):
+    """Apply sub filter to the image data."""
+    filtered = bytearray()
+    for y in range(height):
+        for x in range(width):
+            left = data[(y * width + x - 1) * 3:(y * width + x) * 3] if x > 0 else b'\x00\x00\x00'
+            pixel = data[(y * width + x) * 3:(y * width + x + 1) * 3]
+            filtered += bytes((pixel[i] - left[i]) % 256 for i in range(3))
+    return filtered
 
-        rgb_values = [img.getpixel((x, y)) for y in range(height) for x in range(width)]
+def undo_sub_filter(filtered_data, width, height):
+    """Reverse the sub filter applied to the image data."""
+    unfiltered = bytearray()
+    for y in range(height):
+        for x in range(width):
+            left = unfiltered[(y * width + x - 1) * 3:(y * width + x) * 3] if x > 0 else b'\x00\x00\x00'
+            pixel = filtered_data[(y * width + x) * 3:(y * width + x + 1) * 3]
+            unfiltered += bytes((pixel[i] + left[i]) % 256 for i in range(3))
+    return unfiltered
 
-    return rgb_values, width, height
 
 def main():
     if len(sys.argv) != 3:
-        print("Usage: pyimg.py <encode/fwrite/view> <path_to_file>")
+        print("Usage: pyimg.exe <encode/fwrite/view> <path_to_file>")
         sys.exit(1)
     
     command = sys.argv[1].lower()
@@ -108,7 +133,7 @@ def main():
         sys.exit(1)
 
     if command not in {"encode", "view", "fwrite"}:
-        print("Usage: pyimg.py <encode/fwrite/view> <path_to_file>")
+        print("Usage: pyimg.exe <encode/fwrite/view> <path_to_file>")
         sys.exit(1)
     
     if command in {"view", "fwrite"}:
@@ -125,9 +150,11 @@ def main():
     if command == "encode":
         animateLoading("\nPlease wait... ")
         rgb_values, width, height = image_to_rgb(file_path)
-
         rgb_bytes = struct.pack('II', width, height)
         rgb_bytes += b''.join(struct.pack('BBB', r, g, b) for r, g, b in rgb_values)
+
+        filtered_rgb_bytes = sub_filter(rgb_bytes[8:], width, height)
+        rgb_bytes = rgb_bytes[:8] + filtered_rgb_bytes
 
         compressed_rgb_bytes = zlib.compress(rgb_bytes, level=9)
 
