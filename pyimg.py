@@ -51,12 +51,11 @@ def read_rgb_values(file_path):
         width, height = struct.unpack('II', header)
         
         filtered_rgb_data = rgb_data[8:]
-        unfiltered_rgb_data = undo_sub_filter(filtered_rgb_data, width, height)
+        unfiltered_rgb_data = undo_paeth_filter(filtered_rgb_data, width, height)
         
         rgb_array = np.frombuffer(unfiltered_rgb_data, dtype=np.uint8).reshape((height, width, 3))
 
     return rgb_array, width, height
-
 
 def create_image(rgb_array):
     """Create an image from RGB array."""
@@ -99,30 +98,46 @@ def display_image(image_bytes, file_name):
     
     root.mainloop()
 
-def sub_filter(data, width, height):
-    """Apply sub filter to the image data."""
+def paeth_predictor(a, b, c):
+    """Paeth predictor function."""
+    p = a + b - c
+    pa = abs(p - a)
+    pb = abs(p - b)
+    pc = abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    elif pb <= pc:
+        return b
+    else:
+        return c
+
+def paeth_filter(data, width, height):
+    """Apply Paeth filter to the image data."""
     filtered = bytearray()
     for y in range(height):
         for x in range(width):
             left = data[(y * width + x - 1) * 3:(y * width + x) * 3] if x > 0 else b'\x00\x00\x00'
+            above = data[((y - 1) * width + x) * 3:((y - 1) * width + x + 1) * 3] if y > 0 else b'\x00\x00\x00'
+            upper_left = data[((y - 1) * width + x - 1) * 3:((y - 1) * width + x) * 3] if x > 0 and y > 0 else b'\x00\x00\x00'
             pixel = data[(y * width + x) * 3:(y * width + x + 1) * 3]
-            filtered += bytes((pixel[i] - left[i]) % 256 for i in range(3))
+            filtered += bytes((pixel[i] - paeth_predictor(left[i], above[i], upper_left[i])) % 256 for i in range(3))
     return filtered
 
-def undo_sub_filter(filtered_data, width, height):
-    """Reverse the sub filter applied to the image data."""
+def undo_paeth_filter(filtered_data, width, height):
+    """Reverse the Paeth filter applied to the image data."""
     unfiltered = bytearray()
     for y in range(height):
         for x in range(width):
             left = unfiltered[(y * width + x - 1) * 3:(y * width + x) * 3] if x > 0 else b'\x00\x00\x00'
+            above = unfiltered[((y - 1) * width + x) * 3:((y - 1) * width + x + 1) * 3] if y > 0 else b'\x00\x00\x00'
+            upper_left = unfiltered[((y - 1) * width + x - 1) * 3:((y - 1) * width + x) * 3] if x > 0 and y > 0 else b'\x00\x00\x00'
             pixel = filtered_data[(y * width + x) * 3:(y * width + x + 1) * 3]
-            unfiltered += bytes((pixel[i] + left[i]) % 256 for i in range(3))
+            unfiltered += bytes((pixel[i] + paeth_predictor(left[i], above[i], upper_left[i])) % 256 for i in range(3))
     return unfiltered
-
 
 def main():
     if len(sys.argv) != 3:
-        print("Usage: pyimg.exe <encode/fwrite/view> <path_to_file>")
+        print("Usage: pyimg.py <encode/fwrite/view> <path_to_file>")
         sys.exit(1)
     
     command = sys.argv[1].lower()
@@ -133,7 +148,7 @@ def main():
         sys.exit(1)
 
     if command not in {"encode", "view", "fwrite"}:
-        print("Usage: pyimg.exe <encode/fwrite/view> <path_to_file>")
+        print("Usage: pyimg.py <encode/fwrite/view> <path_to_file>")
         sys.exit(1)
     
     if command in {"view", "fwrite"}:
@@ -153,7 +168,7 @@ def main():
         rgb_bytes = struct.pack('II', width, height)
         rgb_bytes += b''.join(struct.pack('BBB', r, g, b) for r, g, b in rgb_values)
 
-        filtered_rgb_bytes = sub_filter(rgb_bytes[8:], width, height)
+        filtered_rgb_bytes = paeth_filter(rgb_bytes[8:], width, height)
         rgb_bytes = rgb_bytes[:8] + filtered_rgb_bytes
 
         compressed_rgb_bytes = zlib.compress(rgb_bytes, level=9)
