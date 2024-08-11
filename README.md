@@ -2,4 +2,5 @@ PYIMG is a standalone image file format with a size typically smaller than a PNG
 
 Usage for the scripts is as follows:
 pyimg.<py/exe> <encode/fwrite/view> <path_to_file>
+
 (When you are running the script for the first time on your machine, it may take a little longer than normal.)
